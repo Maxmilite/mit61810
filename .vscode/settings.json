@@ -1,0 +1,12 @@
+{
+    "files.associations": {
+        "typeindex": "c",
+        "typeinfo": "c",
+        "user.h": "c",
+        "syscall.h": "c",
+        "stat.h": "c",
+        "types.h": "c",
+        "fcntl.h": "c",
+        "*.ipp": "c"
+    }
+}
