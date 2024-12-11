@@ -69,12 +69,36 @@ sys_sleep(void)
   return 0;
 }
 
+#define PTE_A (1L << 6)
 
 #ifdef LAB_PGTBL
 int
 sys_pgaccess(void)
 {
-  // lab pgtbl: your code here.
+  uint64 addr;
+  int num;
+  uint64 abits;
+
+  argaddr(0, &addr);
+  argint(1, &num);
+  argaddr(2, &abits);
+
+  struct proc *p = myproc();
+  pagetable_t pgtbl = p->pagetable;
+  uint64 res = 0;
+
+  for (int i = 0; i < num; ++i) {
+    pte_t* pte = walk(pgtbl, addr + i * PGSIZE, 0);
+    if (*pte & PTE_V) {
+      if (*pte & PTE_A) {
+        res |= 1 << i;
+        *pte &= ~PTE_A;
+      }
+    }
+  }
+
+  copyout(pgtbl, abits, (char*)&res, sizeof(res));
+
   return 0;
 }
 #endif
