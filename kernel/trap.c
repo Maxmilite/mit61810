@@ -81,7 +81,9 @@ usertrap(void)
     acquire(&p->lock);
     p->passed_ticks += 1;
     if (p->alarm_ticks > 0 && p->passed_ticks >= p->alarm_ticks) {
-      p->alarm_ticks = 0;
+
+      memmove(p->prev_trapframe, p->trapframe, sizeof(struct trapframe));
+
       p->passed_ticks = 0;
       p->trapframe->epc = p->alarm_handler;
     }
