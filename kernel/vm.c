@@ -355,6 +355,9 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     // memmove(mem, (char*)pa, PGSIZE);
     if(mappages(new, i, PGSIZE, (uint64) pa, flags) != 0){
       // kfree(mem);
+      acquire(&refcount_lock);
+      refcount[pa / PGSIZE] -= 1;
+      release(&refcount_lock);
       goto err;
     }
   }
@@ -392,8 +395,9 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
     if(va0 >= MAXVA)
       return -1;
     pte = walk(pagetable, va0, 0);
-    if(*pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0)
-      setkilled(myproc());
+    if(pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0
+       || (((*pte & PTE_W) == 0) && ((*pte & PTE_RSW) == 0)))
+      return -1;
     pa0 = PTE2PA(*pte);
 
     if (is_cow_page(va0, pte, myproc())) {

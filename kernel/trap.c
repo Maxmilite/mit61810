@@ -34,9 +34,10 @@ int cow_handler(pagetable_t pagetable, uint64 addr) {
 
   uint64 pa = PTE2PA(*pte);
   memmove((char*)mem, (char*)pa, PGSIZE);
-  kfree((void*)pa);
-  
   uint flags = PTE_FLAGS(*pte);
+  // kfree((void*)pa);
+  uvmunmap(pagetable, PGROUNDDOWN(addr), 1, 1);
+  
   *pte = (PA2PTE(mem) | flags | PTE_W);
   *pte &= ~PTE_RSW;
   return 0;
