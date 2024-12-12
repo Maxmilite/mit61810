@@ -5,7 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
-
+#include "spinlock.h"
+#include "proc.h"
 /*
  * the kernel's page table.
  */
@@ -14,6 +15,19 @@ pagetable_t kernel_pagetable;
 extern char etext[];  // kernel.ld sets this to end of kernel code.
 
 extern char trampoline[]; // trampoline.S
+
+extern int refcount[PHYSTOP / PGSIZE];
+extern struct spinlock refcount_lock;
+
+int is_cow_page(uint64 va, pte_t* pte, struct proc* p) {
+  if (va >= p->sz) {
+    return 0;
+  }
+  if ((*pte & PTE_V) == 0 || (*pte & PTE_RSW) == 0) {
+    return 0;
+  }
+  return 1;
+}
 
 // Make a direct-map page table for the kernel.
 pagetable_t
@@ -315,20 +329,32 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
+  // char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
       panic("uvmcopy: pte should exist");
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
+
+    // cow
+    if ((*pte & PTE_W) != 0) {
+      *pte &= ~PTE_W;
+      *pte |= PTE_RSW;
+    }
+
     pa = PTE2PA(*pte);
+
+    acquire(&refcount_lock);
+    refcount[pa / PGSIZE] += 1;
+    release(&refcount_lock);
+
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+    // if((mem = kalloc()) == 0)
+    //   goto err;
+    // memmove(mem, (char*)pa, PGSIZE);
+    if(mappages(new, i, PGSIZE, (uint64) pa, flags) != 0){
+      // kfree(mem);
       goto err;
     }
   }
@@ -366,10 +392,26 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
     if(va0 >= MAXVA)
       return -1;
     pte = walk(pagetable, va0, 0);
-    if(pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0 ||
-       (*pte & PTE_W) == 0)
-      return -1;
+    if(*pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0)
+      setkilled(myproc());
     pa0 = PTE2PA(*pte);
+
+    if (is_cow_page(va0, pte, myproc())) {
+      char* mem;
+      if ((mem = kalloc()) == 0) {
+        setkilled(myproc());
+      } else {
+        memmove(mem, (char*)pa0, PGSIZE);
+        uint flags = PTE_FLAGS(*pte);
+
+        uvmunmap(pagetable, va0, 1, 1);
+
+        *pte = PA2PTE(mem) | flags | PTE_W;
+        *pte &= ~PTE_RSW;
+        pa0 = (uint64)mem;
+      }
+    }
+
     n = PGSIZE - (dstva - va0);
     if(n > len)
       n = len;

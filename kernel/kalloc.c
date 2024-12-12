@@ -30,6 +30,7 @@ void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
+  initlock(&refcount_lock, "refcount");
   freerange(end, (void*)PHYSTOP);
 }
 

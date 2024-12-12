@@ -16,6 +16,32 @@ void kernelvec();
 
 extern int devintr();
 
+int cow_handler(pagetable_t pagetable, uint64 addr) {
+  char* mem;
+  if (addr >= MAXVA) {
+    return -1;
+  }
+  pte_t* pte = walk(pagetable, addr, 0);
+  if (pte == 0) {
+    return -1;
+  }
+  if ((*pte & PTE_V) == 0 || (*pte & PTE_U) == 0 || (*pte & PTE_RSW) == 0) {
+    return -1;
+  }
+  if ((mem = kalloc()) == 0) {
+    return -1;
+  }
+
+  uint64 pa = PTE2PA(*pte);
+  memmove((char*)mem, (char*)pa, PGSIZE);
+  kfree((void*)pa);
+  
+  uint flags = PTE_FLAGS(*pte);
+  *pte = (PA2PTE(mem) | flags | PTE_W);
+  *pte &= ~PTE_RSW;
+  return 0;
+}
+
 void
 trapinit(void)
 {
@@ -65,6 +91,21 @@ usertrap(void)
     intr_on();
 
     syscall();
+  } else if (r_scause() == 15) { // write on read-only page
+
+    uint64 addr = r_stval();
+    if (addr >= p->sz) {
+      printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+      printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+      setkilled(p);
+    }
+    int ret = cow_handler(p->pagetable, addr);
+    if (ret != 0) {
+      printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+      printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+      setkilled(p);
+    }
+
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
