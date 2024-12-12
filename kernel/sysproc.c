@@ -118,5 +118,5 @@ uint64 sys_sigreturn(void) {
   acquire(&p->lock);
   memmove(p->trapframe, p->prev_trapframe, sizeof(struct trapframe));
   release(&p->lock);
-  return 0;
+  return p->trapframe->a0;
 }
