@@ -1,12 +1,12 @@
-#include "defs.h"
-#include "e1000_dev.h"
-#include "memlayout.h"
-#include "net.h"
+#include "types.h"
 #include "param.h"
-#include "proc.h"
+#include "memlayout.h"
 #include "riscv.h"
 #include "spinlock.h"
-#include "types.h"
+#include "proc.h"
+#include "defs.h"
+#include "e1000_dev.h"
+#include "net.h"
 
 #define TX_RING_SIZE 16
 static struct tx_desc tx_ring[TX_RING_SIZE] __attribute__((aligned(16)));
@@ -99,6 +99,34 @@ int e1000_transmit(struct mbuf *m) {
 	// a pointer so that it can be freed after sending.
 	//
 
+  acquire(&e1000_lock);
+  uint64 tdt = regs[E1000_TDT]; // Transmit Descriptor Tail
+  uint64 ind = tdt % TX_RING_SIZE;
+  struct tx_desc *txd = &tx_ring[ind]; // get the descriptor of tail
+
+  if (!(txd->status & E1000_TXD_STAT_DD)) { // TX is full, drop
+    release(&e1000_lock);
+    return -1;
+  }
+
+  // free the old mbuf
+  if (tx_mbufs[ind]) {
+    mbuffree(tx_mbufs[ind]);
+  }
+
+  // copy the data to the descriptor
+  tx_mbufs[ind] = m;
+  tx_ring[ind].addr = (uint64) m->head;
+  tx_ring[ind].length = m->len;
+  tx_ring[ind].cmd = E1000_TXD_CMD_RS | E1000_TXD_CMD_EOP; // RS: Report Status, EOP: End of Packet
+  tx_ring[ind].status = 0; // clear status
+
+  // update the tail
+  regs[E1000_TDT] = (tdt + 1) % TX_RING_SIZE;
+
+  __sync_synchronize();
+  release(&e1000_lock);
+
 	return 0;
 }
 
@@ -110,6 +138,35 @@ e1000_recv(void) {
 	// Check for packets that have arrived from the e1000
 	// Create and deliver an mbuf for each packet (using net_rx()).
 	//
+
+  uint64 rdt = regs[E1000_RDT]; // Receive Descriptor Tail
+  uint64 ind = (rdt + 1) % RX_RING_SIZE;
+
+  struct rx_desc *rxd = &rx_ring[ind]; // get the descriptor of tail
+
+  if (!(rxd->status & E1000_RXD_STAT_DD)) { // RX is empty
+    return;
+  }
+
+  while (rx_ring[ind].status & E1000_RXD_STAT_DD) {
+    acquire(&e1000_lock);
+
+    struct mbuf *m = rx_mbufs[ind]; // get the mbuf of tail
+    mbufput(m, rxd->length);
+
+    rx_mbufs[ind] = mbufalloc(0); // allocate a new mbuf
+    rxd->addr = (uint64) rx_mbufs[ind]->head; // set the new mbuf to the descriptor
+    rxd->status = 0; // clear status
+
+    rdt = ind;
+    regs[E1000_RDT] = rdt; // update the tail
+
+    __sync_synchronize();
+    release(&e1000_lock);
+
+    net_rx(m); // deliver the mbuf
+    ind = (rdt + 1) % RX_RING_SIZE;
+  }
 }
 
 void e1000_intr(void) {
