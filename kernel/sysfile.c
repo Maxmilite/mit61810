@@ -505,6 +505,7 @@ sys_pipe(void)
 }
 
 void* mmap(void* addr, uint64 length, int prot, int flags, int fd, uint64 offset) {
+
   return 0;
 }
 
