@@ -515,13 +515,90 @@ uint64 sys_mmap(void) {
 	argfd(4, 0, &f);
 	argaddr(5, &offset);
 
-	return 0;
+  if (addr < 0 || length < 0 || offset < 0 || prot < 0 || flags < 0 || f < 0) {
+    return -1;
+  }
+
+  if (!f->writable && (prot & PROT_WRITE) && flags == MAP_SHARED) {
+    return -1;
+  }
+
+  uint64 vma_addr = vma_alloc();
+  if (vma_addr <= 0) {
+    return -1;
+  }
+
+  struct vma* vma = (struct vma*) vma_addr;
+  struct proc* p = myproc();
+
+  vma->va_start = p->sz;
+  vma->len = PGROUNDUP(length);
+  vma->prot = prot;
+  vma->flags = flags;
+  vma->f = filedup(f);
+  vma->offset = offset;
+
+  p->sz += vma->len;
+
+	return vma->va_start;
 }
 
 uint64 sys_munmap(void) {
   uint64 addr, length;
   argaddr(0, &addr);
   argaddr(1, &length);
+
+  if (addr < 0 || length < 0) {
+    return -1;
+  }
+
+  struct proc* p = myproc();
+
+  struct vma* vma = 0;
+  for (int i = 0; i < MAX_VMAS; i++) {
+    if (p->vmas[i].used && p->vmas[i].va_start == addr) {
+      vma = &p->vmas[i];
+      break;
+    }
+  }
+  if (vma == 0) {
+    return -1;
+  }
+
+  uint64 va_start = vma->va_start;
+  uint64 va_end = va_start + vma->len;
+
+  if (vma->flags == MAP_SHARED && vma->f->writable) {
+    // write back
+    uint64 va_cur = va_start;
+    while (va_cur < va_end) {
+      int sz = PGROUNDUP(va_end - va_cur);
+      begin_op();
+      ilock(vma->f->ip);
+      if (writei(vma->f->ip, 1, va_cur, va_cur - va_start, sz) != sz) {
+        iunlock(vma->f->ip);
+        end_op();
+        return -1;
+      }
+      iunlock(vma->f->ip);
+      end_op();
+      uvmunmap(p->pagetable, va_cur, 1, 1);
+      va_cur += PGSIZE;
+    }
+  }
+
+  // update vma
+  if (addr == vma->va_start) {
+    vma->va_start += length;
+    vma->len -= length;
+  } else if (addr + length == va_end) {
+    vma->len -= length;
+  }
+
+  if (vma->len == 0 && vma->used) {
+    vma->used = 0;
+    fileclose(vma->f);
+  }
 
 	return 0;
 }
