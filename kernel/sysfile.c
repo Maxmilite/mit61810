@@ -504,32 +504,18 @@ sys_pipe(void)
   return 0;
 }
 
-void* mmap(void* addr, uint64 length, int prot, int flags, int fd, uint64 offset) {
-
-  return 0;
-}
-
-int munmap(void* addr, uint64 length) {
-  
-  return 0;
-}
-
 uint64 sys_mmap(void) {
 	uint64 addr, length, offset;
-	int prot, flags, fd;
+	int prot, flags;
+  struct file* f;
 	argaddr(0, &addr);
 	argaddr(1, &length);
 	argint(2, &prot);
 	argint(3, &flags);
-	argint(4, &fd);
+	argfd(4, 0, &f);
 	argaddr(5, &offset);
 
-	uint64 ret;
-	if ((ret = (uint64)mmap((void *)addr, length, prot, flags, fd, offset)) < 0) {
-		return -1;
-	}
-
-	return ret;
+	return 0;
 }
 
 uint64 sys_munmap(void) {
@@ -537,9 +523,5 @@ uint64 sys_munmap(void) {
   argaddr(0, &addr);
   argaddr(1, &length);
 
-	uint64 ret;
-	if ((ret = munmap((void *)addr, length)) < 0) {
-		return -1;
-	}
-	return ret;
+	return 0;
 }
