@@ -5,6 +5,10 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fcntl.h"
+#include "sleeplock.h"
+#include "fs.h"
+#include "file.h"
 
 struct cpu cpus[NCPU];
 
@@ -312,6 +316,14 @@ fork(void)
       np->ofile[i] = filedup(p->ofile[i]);
   np->cwd = idup(p->cwd);
 
+  // vma copy
+  for (int i =0; i < MAX_VMAS; ++i) {
+    struct vma* vma = &p->vmas[i];
+    if (!vma->used) continue;
+    memmove(&np->vmas[i], vma, sizeof(struct vma));
+    filedup(vma->f);
+  }
+
   safestrcpy(np->name, p->name, sizeof(p->name));
 
   pid = np->pid;
@@ -344,6 +356,8 @@ reparent(struct proc *p)
   }
 }
 
+#define min(a, b) ((a) < (b) ? (a) : (b))
+
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state
 // until its parent calls wait().
@@ -361,6 +375,49 @@ exit(int status)
       struct file *f = p->ofile[fd];
       fileclose(f);
       p->ofile[fd] = 0;
+    }
+  }
+
+  // vma free
+  for (int i = 0; i < MAX_VMAS; i++) {
+    if (!p->vmas[i].used) continue;
+    struct vma* vma = &p->vmas[i];
+    uint64 addr = vma->va_start;
+    uint64 length = vma->len;
+    uint64 va_start = addr;
+    uint64 va_end = addr + length;
+
+    if (vma->flags == MAP_SHARED && vma->f->writable) {
+      // write back
+      uint64 va_cur = va_start;
+      while (va_cur < va_end) {
+        int sz = min(va_end - va_cur, PGSIZE);
+        begin_op();
+        ilock(vma->f->ip);
+        if (writei(vma->f->ip, 1, va_cur, va_cur - vma->va_start, sz) != sz) {
+          iunlock(vma->f->ip);
+          end_op();
+          va_cur += PGSIZE;
+          continue;
+        }
+        iunlock(vma->f->ip);
+        end_op();
+        uvmunmap(p->pagetable, va_cur, 1, 1);
+        va_cur += PGSIZE;
+      }
+    }
+
+    // update vma
+    if (addr == vma->va_start) {
+      vma->va_start += length;
+      vma->len -= length;
+    } else if (addr + length == vma->va_start + vma->len) {
+      vma->len -= length;
+    }
+
+    if (vma->len == 0 && vma->used) {
+      vma->used = 0;
+      fileclose(vma->f);
     }
   }
 

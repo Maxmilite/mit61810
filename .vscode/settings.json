@@ -18,6 +18,11 @@
         "random": "c",
         "istream": "c",
         "limits": "c",
-        "numeric": "c"
+        "numeric": "c",
+        "proc.h": "c",
+        "fcntl.h": "c",
+        "defs.h": "c",
+        "spinlock.h": "c",
+        "file.h": "c"
     }
 }
