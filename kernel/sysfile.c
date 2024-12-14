@@ -504,6 +504,14 @@ sys_pipe(void)
   return 0;
 }
 
+void* mmap(void* addr, uint64 length, int prot, int flags, int fd, uint64 offset) {
+  return 0;
+}
+
+int munmap(void* addr, uint64 length) {
+  return 0;
+}
+
 uint64 sys_mmap(void) {
 	uint64 addr, length, offset;
 	int prot, flags, fd;
