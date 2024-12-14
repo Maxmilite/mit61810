@@ -1,5 +1,11 @@
 {
     "files.associations": {
-        "log": "cpp"
+        "log": "cpp",
+        "riscv.h": "c",
+        "memlayout.h": "c",
+        "spinlock.h": "c",
+        "sleeplock.h": "c",
+        "file.h": "c",
+        "fcntl.h": "c"
     }
 }
