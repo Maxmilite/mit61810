@@ -28,24 +28,7 @@ struct cpu {
 
 extern struct cpu cpus[NCPU];
 
-struct vminfo {
 
-  // mapping start & end
-  uint64 va_start;
-  uint64 va_end;
-  // mapping length
-  uint64 length;
-
-  // privilege
-  int prot;
-  // flags
-  int flags;
-  
-  struct file* file;
-  
-  // file offset
-  uint64 offset;
-};
 
 // per-process data for the trap handling code in trampoline.S.
 // sits in a page by itself just under the trampoline page in the

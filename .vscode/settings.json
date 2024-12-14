@@ -3,6 +3,11 @@
         "*.tcc": "c",
         "string": "c",
         "unordered_map": "c",
-        "string_view": "c"
+        "string_view": "c",
+        "array": "c",
+        "deque": "c",
+        "list": "c",
+        "vector": "c",
+        "initializer_list": "c"
     }
 }

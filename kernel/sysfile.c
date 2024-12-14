@@ -504,7 +504,23 @@ sys_pipe(void)
   return 0;
 }
 
-
+uint64 find_unallocated_vm_area(uint64 length) {
+  struct proc *p = myproc();
+  uint64 addr = p->sz;
+  uint64 end = addr + length;
+  for (int i = 0; i < p->vmas_count; i++) {
+    if (addr >= p->vmas[i].va_end) {
+      addr = p->vmas[i].va_end;
+      end = addr + length;
+    }
+    if (addr >= p->vmas[i].va_start && end <= p->vmas[i].va_end) {
+      addr = end;
+      end = addr + length;
+      i = -1;
+    }
+  }
+  return addr;
+}
 
 void* mmap(void* addr, uint64 length, int prot, int flags, int fd, uint64 offset) {
 
