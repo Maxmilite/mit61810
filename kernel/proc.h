@@ -28,7 +28,17 @@ struct cpu {
 
 extern struct cpu cpus[NCPU];
 
+struct vma {
+  int used;
+  uint64 va_start;
+  int len;
+  int prot;
+  int flags;
+  struct file *f;
+  uint64 offset;
+};
 
+#define MAX_VMAS 16
 
 // per-process data for the trap handling code in trampoline.S.
 // sits in a page by itself just under the trampoline page in the
@@ -107,5 +117,5 @@ struct proc {
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
 
-  
+  struct vma vmas[MAX_VMAS];
 };

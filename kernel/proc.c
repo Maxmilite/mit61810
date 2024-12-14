@@ -146,6 +146,10 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  for (int i = 0; i < MAX_VMAS; i++) {
+    p->vmas[i].used = 0;
+  }
+
   return p;
 }
 
@@ -684,5 +688,33 @@ procdump(void)
       state = "???";
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
+  }
+}
+
+// vma
+
+struct vma* get_vmas() {
+  struct proc *p = myproc();
+  return p->vmas;
+}
+
+uint64 vma_alloc() {
+  struct proc *p = myproc();
+  for (int i = 0; i < MAX_VMAS; i++) {
+    if (p->vmas[i].used == 0) {
+      p->vmas[i].used = 1;
+      return (uint64) &p->vmas[i];
+    }
+  }
+  return 0;
+}
+
+void vma_free(uint64 vma) {
+  struct proc *p = myproc();
+  for (int i = 0; i < MAX_VMAS; i++) {
+    if ((uint64) &p->vmas[i] == vma) {
+      p->vmas[i].used = 0;
+      return;
+    }
   }
 }
