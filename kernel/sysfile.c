@@ -543,10 +543,13 @@ uint64 sys_mmap(void) {
 	return vma->va_start;
 }
 
+#define min(a, b) ((a) < (b) ? (a) : (b))
+
 uint64 sys_munmap(void) {
-  uint64 addr, length;
+  uint64 addr;
+  int length;
   argaddr(0, &addr);
-  argaddr(1, &length);
+  argint(1, &length);
 
   if (addr < 0 || length < 0) {
     return -1;
@@ -556,7 +559,7 @@ uint64 sys_munmap(void) {
 
   struct vma* vma = 0;
   for (int i = 0; i < MAX_VMAS; i++) {
-    if (p->vmas[i].used && p->vmas[i].va_start == addr) {
+    if (p->vmas[i].used && p->vmas[i].va_start <= addr && p->vmas[i].va_start + p->vmas[i].len >= addr + length) {
       vma = &p->vmas[i];
       break;
     }
@@ -565,20 +568,21 @@ uint64 sys_munmap(void) {
     return -1;
   }
 
-  uint64 va_start = vma->va_start;
-  uint64 va_end = va_start + vma->len;
+  uint64 va_start = addr;
+  uint64 va_end = addr + length;
 
   if (vma->flags == MAP_SHARED && vma->f->writable) {
     // write back
     uint64 va_cur = va_start;
     while (va_cur < va_end) {
-      int sz = PGROUNDUP(va_end - va_cur);
+      int sz = min(va_end - va_cur, PGSIZE);
       begin_op();
       ilock(vma->f->ip);
-      if (writei(vma->f->ip, 1, va_cur, va_cur - va_start, sz) != sz) {
+      if (writei(vma->f->ip, 1, va_cur, va_cur - vma->va_start, sz) != sz) {
         iunlock(vma->f->ip);
         end_op();
-        return -1;
+        va_cur += PGSIZE;
+        continue;
       }
       iunlock(vma->f->ip);
       end_op();
@@ -591,7 +595,7 @@ uint64 sys_munmap(void) {
   if (addr == vma->va_start) {
     vma->va_start += length;
     vma->len -= length;
-  } else if (addr + length == va_end) {
+  } else if (addr + length == vma->va_start + vma->len) {
     vma->len -= length;
   }
 

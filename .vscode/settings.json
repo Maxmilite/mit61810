@@ -8,6 +8,16 @@
         "deque": "c",
         "list": "c",
         "vector": "c",
-        "initializer_list": "c"
+        "initializer_list": "c",
+        "sleeplock.h": "c",
+        "*.ipp": "c",
+        "bitset": "c",
+        "utility": "c",
+        "chrono": "c",
+        "algorithm": "c",
+        "random": "c",
+        "istream": "c",
+        "limits": "c",
+        "numeric": "c"
     }
 }

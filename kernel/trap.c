@@ -6,6 +6,11 @@
 #include "proc.h"
 #include "defs.h"
 
+#include "sleeplock.h"
+#include "fs.h"
+#include "file.h"
+#include "fcntl.h"
+
 struct spinlock tickslock;
 uint ticks;
 
@@ -27,6 +32,50 @@ void
 trapinithart(void)
 {
   w_stvec((uint64)kernelvec);
+}
+
+void pf_handler() {
+  struct proc *p = myproc();
+  uint64 va = r_stval();
+
+  // check if the faulting address is in the stack
+  if (va >= p->sz || va < PGROUNDDOWN(p->trapframe->sp)) {
+    setkilled(p);
+    return;
+  }
+
+  va = PGROUNDDOWN(va);
+
+  // find the vma that contains the faulting address
+  struct vma *vma = 0;
+  for (int i = 0; i < MAX_VMAS; i++) {
+    if (p->vmas[i].used && p->vmas[i].va_start <= va && p->vmas[i].va_start + p->vmas[i].len > va) {
+      vma = &p->vmas[i];
+      break;
+    }
+  }
+
+  if (vma == 0) {
+    return;
+  }
+
+  // alloc memory for the page
+  char* kmem = kalloc();
+  if (kmem == 0) {
+    setkilled(p);
+    return;
+  }
+
+  memset(kmem, 0, PGSIZE);
+  if (mappages(p->pagetable, va, PGSIZE, (uint64)kmem, (vma->prot << 1) | PTE_U) != 0) {
+    kfree(kmem);
+    setkilled(p);
+    return;
+  }
+
+  ilock(vma->f->ip);
+  readi(vma->f->ip, 0, (uint64) kmem, va - vma->va_start, PGSIZE);
+  iunlock(vma->f->ip);
 }
 
 //
@@ -65,6 +114,8 @@ usertrap(void)
     intr_on();
 
     syscall();
+  } else if (r_scause() == 13 || r_scause() == 15) {
+    pf_handler();
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
